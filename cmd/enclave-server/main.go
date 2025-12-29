@@ -12,15 +12,16 @@ import (
 	"time" // 新增：引入时间包
 
 	"nitro_enclave/internal/aes"
+	"nitro_enclave/internal/resp"
 )
 
 var keyCache = aes.NewKeyCache()
 
-type GenerateKeyResponse struct {
-	KeyID  string `json:"key_id"`
-	Status string `json:"status"`
-	Msg    string `json:"msg,omitempty"` // 错误信息
-	// 移除CostMs字段，不修改JSON响应
+//request
+
+type EncryptRequest struct {
+	KeyID     string `json:"key_id"`
+	plaintext string `json:"plaintext"`
 }
 
 func main() {
@@ -39,7 +40,7 @@ func main() {
 		startTime := time.Now()
 
 		if r.Method != http.MethodGet {
-			resp := GenerateKeyResponse{
+			resp := resp.GenerateKeyResponse{
 				Status: "error",
 				Msg:    "仅支持 GET 请求",
 			}
@@ -53,7 +54,7 @@ func main() {
 
 		keyID := keyCache.GenerateKey()
 		if keyID == "" { // 容错密钥生成失败
-			resp := GenerateKeyResponse{
+			resp := resp.GenerateKeyResponse{
 				Status: "error",
 				Msg:    "密钥生成失败",
 			}
@@ -65,9 +66,74 @@ func main() {
 			return
 		}
 
-		resp := GenerateKeyResponse{
+		resp := resp.GenerateKeyResponse{
 			KeyID:  keyID,
 			Status: "success",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+
+		// ========== 核心新增：计算耗时并打印日志 ==========
+		costMs := time.Since(startTime).Seconds() * 1000 // 纳秒转毫秒（保留3位小数）
+		log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
+	})
+
+	// 增加请求方法校验，避免非法请求导致逻辑异常
+	http.HandleFunc("/encrypt", func(w http.ResponseWriter, r *http.Request) {
+		// ========== 核心新增：记录请求开始时间 ==========
+		startTime := time.Now()
+
+		if r.Method != http.MethodPost {
+			resp := resp.GenerateKeyResponse{
+				Status: "error",
+				Msg:    "仅支持 POST 请求",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			// ========== 计算耗时并打印日志 ==========
+			costMs := time.Since(startTime).Seconds() * 1000 // 转毫秒
+			log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
+			return
+		}
+
+		var req EncryptRequest
+		dec := json.NewDecoder(r.Body)
+		if err := dec.Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp.GenerateKeyResponse{
+				Status: "error",
+				Msg:    "JSON 绑定失败: " + err.Error(),
+			})
+			return
+		}
+
+		if req.KeyID == "" || req.plaintext == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp.EncryptStatusResponse{
+				Status: "error",
+				Msg:    "key_id 或 data 不能为空",
+			})
+			return
+		}
+
+		encryptData, _, _, err := keyCache.Encrypt(req.KeyID, req.plaintext)
+		if err != nil {
+			resp := resp.EncryptStatusResponse{
+				Status: "error",
+				Msg:    "加密失败",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			// ========== 计算耗时并打印日志 ==========
+			costMs := time.Since(startTime).Seconds() * 1000 // 转毫秒
+			log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
+			return
+		}
+		//返回
+		resp := resp.EncryptResponse{
+			KeyID:         req.KeyID,
+			Status:        "success",
+			EncryptedData: encryptData,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
