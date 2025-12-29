@@ -34,19 +34,19 @@ func (c *KeyCache) GenerateKey() string {
 }
 
 // Encrypt 加密数据（返回密文、nonce、tag，均为十六进制字符串）
-func (c *KeyCache) Encrypt(keyID, plaintext string) (string, string, string, error) {
+func (c *KeyCache) Encrypt(keyID, plaintext string) (string, error) {
 	key, ok := c.keys[keyID]
 	if !ok {
-		return "", "", "", fmt.Errorf("密钥ID不存在: %s", keyID)
+		return "", fmt.Errorf("密钥ID不存在: %s", keyID)
 	}
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", "", "", err
+		return "", err
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", "", "", err
+		return "", err
 	}
 
 	nonce := make([]byte, gcm.NonceSize())
@@ -57,71 +57,73 @@ func (c *KeyCache) Encrypt(keyID, plaintext string) (string, string, string, err
 	tag := ciphertext[len(ciphertext)-gcm.Overhead():]
 	ciphertext = ciphertext[:len(ciphertext)-gcm.Overhead()]
 
-	return hex.EncodeToString(ciphertext), hex.EncodeToString(nonce), hex.EncodeToString(tag), nil
+	ciphertextHex := hex.EncodeToString(ciphertext)
+	nonceHex := hex.EncodeToString(nonce)
+	tagHex := hex.EncodeToString(tag)
+
+	fullEncryptedStr := fmt.Sprintf("%s$%s$%s", ciphertextHex, nonceHex, tagHex)
+
+	return fullEncryptedStr, nil
 }
 
-func (c *KeyCache) Decrypt(keyID, encryptedData string) (string, string, string, error) {
-	// 1. 空参数快速校验（避免后续解码失败）
-	if keyID == "" || encryptedData == "" {
-		return "", "", "", fmt.Errorf("keyID或加密数据不能为空")
+func (c *KeyCache) Decrypt(keyID, fullEncryptedStr string) (string, error) {
+	// 1. 空参数校验
+	if keyID == "" || fullEncryptedStr == "" {
+		return "", fmt.Errorf("密钥ID或加密字符串不能为空")
 	}
 
-	// 2. 读取密钥（无锁，保持原有逻辑）
+	// 2. 读取密钥（与 Encrypt 逻辑一致，无锁）
 	key, ok := c.keys[keyID]
 	if !ok {
-		return "", "", "", fmt.Errorf("密钥ID不存在: %s", keyID)
+		return "", fmt.Errorf("密钥ID不存在: %s", keyID)
 	}
 
-	// 3. 拆分加密数据（ciphertextHex|nonceHex|tagHex）
-	parts := strings.Split(encryptedData, "|")
+	// 3. 按 $ 拆分加密字符串，还原 ciphertextHex/nonceHex/tagHex
+	parts := strings.Split(fullEncryptedStr, "$")
 	if len(parts) != 3 {
-		return "", "", "", fmt.Errorf("加密数据格式错误，需为ciphertextHex|nonceHex|tagHex")
+		return "", fmt.Errorf("加密字符串格式错误，需为 ciphertextHex$nonceHex$tagHex，当前：%s", fullEncryptedStr)
 	}
 	ciphertextHex := parts[0]
 	nonceHex := parts[1]
 	tagHex := parts[2]
 
-	// 4. 十六进制解码（补充错误上下文，便于调试）
+	// 4. hex 解码（与 Encrypt 的 hex.EncodeToString 反向操作）
 	ciphertext, err := hex.DecodeString(ciphertextHex)
 	if err != nil {
-		return "", "", "", fmt.Errorf("密文解码失败: %w", err)
+		return "", fmt.Errorf("密文 hex 解码失败: %w", err)
 	}
 	nonce, err := hex.DecodeString(nonceHex)
 	if err != nil {
-		return "", "", "", fmt.Errorf("nonce解码失败: %w", err)
+		return "", fmt.Errorf("nonce hex 解码失败: %w", err)
 	}
 	tag, err := hex.DecodeString(tagHex)
 	if err != nil {
-		return "", "", "", fmt.Errorf("tag解码失败: %w", err)
+		return "", fmt.Errorf("tag hex 解码失败: %w", err)
 	}
 
-	// 5. 创建AES-GCM实例（保留原有逻辑）
+	// 5. 创建 AES-GCM 实例（与 Encrypt 逻辑一致）
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", "", "", fmt.Errorf("创建AES加密器失败: %w", err)
+		return "", fmt.Errorf("创建 AES 加密器失败: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", "", "", fmt.Errorf("创建GCM模式失败: %w", err)
+		return "", fmt.Errorf("创建 GCM 模式失败: %w", err)
 	}
 
-	// 6. 校验nonce/tag长度（避免解密失败）
-	if len(nonce) != gcm.NonceSize() {
-		return "", "", "", fmt.Errorf("nonce长度非法：%d字节（需%d字节）", len(nonce), gcm.NonceSize())
-	}
-	if len(tag) != gcm.Overhead() {
-		return "", "", "", fmt.Errorf("tag长度非法：%d字节（需%d字节）", len(tag), gcm.Overhead())
-	}
-
-	// 7. 解密逻辑（保留原有）
+	// 6. 还原完整密文（Encrypt 中拆分了 tag，解密需拼接回去）
+	// Encrypt: ciphertext = 完整密文[:len-Overhead], tag = 完整密文[len-Overhead:]
+	// Decrypt: 完整密文 = ciphertext + tag
 	fullCiphertext := append(ciphertext, tag...)
-	plaintext, err := gcm.Open(nil, nonce, fullCiphertext, nil)
+
+	// 7. 执行 GCM 解密（与 Encrypt 的 Seal 反向操作）
+	plaintextBytes, err := gcm.Open(nil, nonce, fullCiphertext, nil)
 	if err != nil {
-		return "", "", "", fmt.Errorf("GCM解密失败: %w", err)
+		return "", fmt.Errorf("GCM 解密失败: %w", err)
 	}
 
-	// 8. 返回：明文 + 空占位（匹配4个返回值，兼容调用）
-	return string(plaintext), "", "", nil
+	// 8. 转换为明文字符串返回
+	return string(plaintextBytes), nil
 }
 
 // Decrypt 解密数据（传入密文、nonce、tag，均为十六进制字符串）

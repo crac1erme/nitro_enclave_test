@@ -112,7 +112,7 @@ func main() {
 			return
 		}
 
-		encryptData, _, _, err := keyCache.Encrypt(request.KeyID, request.Plaintext)
+		encryptData, err := keyCache.Encrypt(request.KeyID, request.Plaintext)
 		if err != nil {
 			resp := resp.EncryptStatusResponse{
 				Status: "error",
@@ -140,7 +140,7 @@ func main() {
 	})
 
 	// 解密接口（与加密接口逻辑对齐）
-	http.HandleFunc("/decrypt", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/aes/decrypt", func(w http.ResponseWriter, r *http.Request) {
 		// ========== 核心新增：记录请求开始时间 ==========
 		startTime := time.Now()
 
@@ -187,7 +187,7 @@ func main() {
 		}
 
 		// 调用密钥缓存的解密方法（需确保 keyCache.Decrypt 方法返回4个值，与 Encrypt 对齐）
-		decryptData, _, _, err := keyCache.Decrypt(request.KeyID, request.EncryptedData)
+		decryptData, err := keyCache.Decrypt(request.KeyID, request.EncryptedData)
 		if err != nil {
 			resp := resp.DecryptStatusResponse{
 				Status: "error",
