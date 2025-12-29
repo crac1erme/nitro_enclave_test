@@ -31,7 +31,7 @@ func main() {
 	}()
 
 	// 增加请求方法校验，避免非法请求导致逻辑异常
-	http.HandleFunc("/generate-key", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/aes/generate-key", func(w http.ResponseWriter, r *http.Request) {
 		// ========== 核心新增：记录请求开始时间 ==========
 		startTime := time.Now()
 
@@ -75,7 +75,7 @@ func main() {
 	})
 
 	// 增加请求方法校验，避免非法请求导致逻辑异常
-	http.HandleFunc("/encrypt", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/aes/encrypt", func(w http.ResponseWriter, r *http.Request) {
 		// ========== 核心新增：记录请求开始时间 ==========
 		startTime := time.Now()
 
@@ -130,6 +130,82 @@ func main() {
 			KeyID:         request.KeyID,
 			Status:        "success",
 			EncryptedData: encryptData,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+
+		// ========== 核心新增：计算耗时并打印日志 ==========
+		costMs := time.Since(startTime).Seconds() * 1000 // 纳秒转毫秒（保留3位小数）
+		log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
+	})
+
+	// 解密接口（与加密接口逻辑对齐）
+	http.HandleFunc("/decrypt", func(w http.ResponseWriter, r *http.Request) {
+		// ========== 核心新增：记录请求开始时间 ==========
+		startTime := time.Now()
+
+		// 非POST请求拦截
+		if r.Method != http.MethodPost {
+			resp := resp.GenerateKeyResponse{
+				Status: "error",
+				Msg:    "仅支持 POST 请求",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			// ========== 计算耗时并打印日志 ==========
+			costMs := time.Since(startTime).Seconds() * 1000 // 转毫秒
+			log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
+			return
+		}
+
+		// 解析JSON请求体到DecryptRequest结构体
+		var request req.DecryptRequest
+		dec := json.NewDecoder(r.Body)
+		if err := dec.Decode(&request); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp.GenerateKeyResponse{
+				Status: "error",
+				Msg:    "JSON 绑定失败: " + err.Error(),
+			})
+			// 补充耗时日志（加密接口此处遗漏，需补齐）
+			costMs := time.Since(startTime).Seconds() * 1000
+			log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
+			return
+		}
+
+		// 参数非空校验
+		if request.KeyID == "" || request.EncryptedData == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp.DecryptStatusResponse{
+				Status: "error",
+				Msg:    "key_id 或 encrypted_data 不能为空",
+			})
+			// 补充耗时日志
+			costMs := time.Since(startTime).Seconds() * 1000
+			log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
+			return
+		}
+
+		// 调用密钥缓存的解密方法（需确保 keyCache.Decrypt 方法返回4个值，与 Encrypt 对齐）
+		decryptData, _, _, err := keyCache.Decrypt(request.KeyID, request.EncryptedData)
+		if err != nil {
+			resp := resp.DecryptStatusResponse{
+				Status: "error",
+				Msg:    "解密失败",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			// ========== 计算耗时并打印日志 ==========
+			costMs := time.Since(startTime).Seconds() * 1000 // 转毫秒
+			log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
+			return
+		}
+
+		// 解密成功响应
+		resp := resp.DecryptResponse{
+			KeyID:         request.KeyID,
+			Status:        "success",
+			DecryptedData: decryptData,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
