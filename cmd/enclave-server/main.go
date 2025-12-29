@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time" // 新增：引入时间包
 
 	"nitro_enclave/internal/aes"
 )
@@ -19,6 +20,7 @@ type GenerateKeyResponse struct {
 	KeyID  string `json:"key_id"`
 	Status string `json:"status"`
 	Msg    string `json:"msg,omitempty"` // 错误信息
+	// 移除CostMs字段，不修改JSON响应
 }
 
 func main() {
@@ -33,6 +35,9 @@ func main() {
 
 	// 增加请求方法校验，避免非法请求导致逻辑异常
 	http.HandleFunc("/generate-key", func(w http.ResponseWriter, r *http.Request) {
+		// ========== 核心新增：记录请求开始时间 ==========
+		startTime := time.Now()
+
 		if r.Method != http.MethodGet {
 			resp := GenerateKeyResponse{
 				Status: "error",
@@ -40,6 +45,9 @@ func main() {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
+			// ========== 计算耗时并打印日志 ==========
+			costMs := time.Since(startTime).Seconds() * 1000 // 转毫秒
+			log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
 			return
 		}
 
@@ -51,6 +59,9 @@ func main() {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
+			// ========== 计算耗时并打印日志 ==========
+			costMs := time.Since(startTime).Seconds() * 1000 // 转毫秒
+			log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
 			return
 		}
 
@@ -60,6 +71,10 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
+
+		// ========== 核心新增：计算耗时并打印日志 ==========
+		costMs := time.Since(startTime).Seconds() * 1000 // 纳秒转毫秒（保留3位小数）
+		log.Printf("URL: %s | 耗时: %.3fms", r.URL.Path, costMs)
 	})
 
 	// 核心修改：监听 TCP 8080 端口（纯 HTTP，移除所有 VSOCK 逻辑）
