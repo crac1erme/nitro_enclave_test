@@ -112,7 +112,7 @@ func main() {
 			return
 		}
 
-		encryptData, _, _, err := keyCache.Encrypt(request.KeyID, request.plaintext)
+		encryptData, _, _, err := keyCache.Encrypt(request.KeyID, request.Plaintext)
 		if err != nil {
 			resp := resp.EncryptStatusResponse{
 				Status: "error",
