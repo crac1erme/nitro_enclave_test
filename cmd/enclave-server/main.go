@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"nitro_enclave/internal/req"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,11 +19,6 @@ import (
 var keyCache = aes.NewKeyCache()
 
 //request
-
-type EncryptRequest struct {
-	KeyID     string `json:"key_id"`
-	plaintext string `json:"plaintext"`
-}
 
 func main() {
 	// 监听退出信号，输出日志（便于排查是否被强制终止）
@@ -96,9 +92,9 @@ func main() {
 			return
 		}
 
-		var req EncryptRequest
+		var request req.EncryptRequest
 		dec := json.NewDecoder(r.Body)
-		if err := dec.Decode(&req); err != nil {
+		if err := dec.Decode(&request); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(resp.GenerateKeyResponse{
 				Status: "error",
@@ -107,16 +103,16 @@ func main() {
 			return
 		}
 
-		if req.KeyID == "" || req.plaintext == "" {
+		if request.KeyID == "" || request.Plaintext == "" {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(resp.EncryptStatusResponse{
 				Status: "error",
-				Msg:    "key_id 或 data 不能为空",
+				Msg:    "key_id 或 Plaintext 不能为空",
 			})
 			return
 		}
 
-		encryptData, _, _, err := keyCache.Encrypt(req.KeyID, req.plaintext)
+		encryptData, _, _, err := keyCache.Encrypt(request.KeyID, request.plaintext)
 		if err != nil {
 			resp := resp.EncryptStatusResponse{
 				Status: "error",
@@ -131,7 +127,7 @@ func main() {
 		}
 		//返回
 		resp := resp.EncryptResponse{
-			KeyID:         req.KeyID,
+			KeyID:         request.KeyID,
 			Status:        "success",
 			EncryptedData: encryptData,
 		}
