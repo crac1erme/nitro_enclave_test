@@ -7,6 +7,7 @@ sudo usermod -aG docker $USER
 sudo systemctl start nitro-enclaves-allocator.service && sudo systemctl enable nitro-enclaves-allocator.service
 sudo systemctl start docker && sudo systemctl enable docker
 #vsock build & run
+
 git clone https://github.com/aws/aws-nitro-enclaves-cli.git
 cd aws-nitro-enclaves-cli/
 #磁盘要大一点 不然会构建失败
