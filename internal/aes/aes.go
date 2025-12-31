@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -24,13 +25,22 @@ func NewKeyCache() *KeyCache {
 	}
 }
 
+func (c *KeyCache) AESKeyToBase64(aesKey []byte) string {
+	return base64.StdEncoding.EncodeToString(aesKey)
+}
+
+// Base64ToAESKey 将 Base64 字符串解码回 []byte 类型的 AES Key
+func (c *KeyCache) Base64ToAESKey(base64Str string) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(base64Str)
+}
+
 // GenerateKey 生成 AES-256 密钥，返回 KeyID
-func (c *KeyCache) GenerateKey() string {
+func (c *KeyCache) GenerateKey() (string, []byte) {
 	key := make([]byte, 32)
 	rand.Read(key) // 忽略错误（简化示例）
 	keyID := uuid.NewString()
 	c.keys[keyID] = key
-	return keyID
+	return keyID, key
 }
 
 // Encrypt 加密数据（返回密文、nonce、tag，均为十六进制字符串）
@@ -64,6 +74,35 @@ func (c *KeyCache) Encrypt(keyID, plaintext string) (string, error) {
 	fullEncryptedStr := fmt.Sprintf("%s$%s$%s", ciphertextHex, nonceHex, tagHex)
 
 	return fullEncryptedStr, nil
+}
+
+func (c *KeyCache) Encrypt_backup_to_s3(aes_key []byte, plaintext []byte) ([]byte, error) {
+
+	block, err := aes.NewCipher(aes_key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := []byte("123456789012")
+
+	plaintextBytes := plaintext
+	ciphertext := gcm.Seal(nil, nonce, plaintextBytes, nil)
+
+	return ciphertext, nil
+	//tag := ciphertext[len(ciphertext)-gcm.Overhead():]
+	//ciphertext = ciphertext[:len(ciphertext)-gcm.Overhead()]
+	//
+	//ciphertextHex := hex.EncodeToString(ciphertext)
+	//nonceHex := hex.EncodeToString(nonce)
+	//tagHex := hex.EncodeToString(tag)
+	//
+	//fullEncryptedStr := fmt.Sprintf("%s$%s$%s", ciphertextHex, nonceHex, tagHex)
+	//
+	//return fullEncryptedStr, nil
 }
 
 func (c *KeyCache) Decrypt(keyID, fullEncryptedStr string) (string, error) {
