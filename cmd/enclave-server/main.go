@@ -26,7 +26,7 @@ var keyCache = aes.NewKeyCache()
 
 func main() {
 
-	awsRegion := "ap-southeast-1"                                                                  // 你的AWS区域（如us-east-1、eu-west-1）
+	awsRegion := "ap-southeast-2"                                                                  // 你的AWS区域（如us-east-1、eu-west-1）
 	kmsKeyId := "arn:aws:kms:ap-southeast-2:389405924691:key/feb73b5b-2218-45f3-8dc9-a332dea6631b" // 替换为已存在的KMS主密钥ID/ARN
 	dataKeySpec := types.DataKeySpecAes256                                                         // 数据密钥规格（AES_256/AES_128）
 
