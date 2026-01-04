@@ -2,10 +2,14 @@ package s3
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -13,21 +17,78 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
-// 初始化 S3 客户端（单例复用，减少资源占用）
+// vsockDialer 创建VSock拨号器，连接宿主机的vsock-proxy
+func vsockDialer() func(ctx context.Context, network, addr string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		// 配置拨号超时和保活（解决之前的字段爆红问题）
+		dialer := &net.Dialer{
+			Timeout:   10 * time.Second, // VSock连接超时
+			KeepAlive: 30 * time.Second, // TCP保活（VSock复用该逻辑）
+		}
+		// 宿主机VSock CID固定为3，端口为预定义的S3代理端口
+		return dialer.DialContext(ctx, "vsock", "16:8001")
+	}
+}
+
 func InitS3Client(region string) (*s3.Client, error) {
-	// 加载 AWS 配置（自动读取凭证、区域）
+	// 1. 自定义HTTP Client（走VSock代理）
+	vsockHTTPClient := &http.Client{
+		Timeout: 30 * time.Second, // 整个HTTP请求总超时
+		Transport: &http.Transport{
+			// 核心：替换为VSock拨号器
+			DialContext: vsockDialer(),
+			// TLS配置：必须指定S3的ServerName，避免证书验证失败
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: false,                                      // 生产环境禁止设为true
+				ServerName:         fmt.Sprintf("s3.%s.amazonaws.com", region), // S3域名
+			},
+			// Transport合法字段（避免爆红）
+			MaxIdleConns:        100,
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
+		},
+	}
+
+	// 2. 加载 AWS 配置（注入VSock的HTTP Client）
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(region),
-		// 可选：自定义超时、重试策略
-		// config.WithHTTPClient(&http.Client{Timeout: 30 * time.Second}),
+		config.WithHTTPClient(vsockHTTPClient), // 关键：使用VSock代理的Client
+		// 可选：固定S3端点，增强稳定性
+		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
+			func(service, reg string, options ...interface{}) (aws.Endpoint, error) {
+				if service == s3.ServiceID {
+					return aws.Endpoint{
+						URL:           fmt.Sprintf("https://s3.%s.amazonaws.com", reg),
+						SigningRegion: reg,
+					}, nil
+				}
+				return aws.Endpoint{}, fmt.Errorf("不支持的服务: %s", service)
+			},
+		)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("加载 AWS 配置失败: %w", err)
 	}
 
-	// 创建 S3 客户端
+	// 3. 创建 S3 客户端（流量自动走VSock代理）
 	return s3.NewFromConfig(cfg), nil
 }
+
+// 初始化 S3 客户端（单例复用，减少资源占用）
+//func InitS3Client(region string) (*s3.Client, error) {
+//	// 加载 AWS 配置（自动读取凭证、区域）
+//	cfg, err := config.LoadDefaultConfig(context.TODO(),
+//		config.WithRegion(region),
+//		// 可选：自定义超时、重试策略
+//		// config.WithHTTPClient(&http.Client{Timeout: 30 * time.Second}),
+//	)
+//	if err != nil {
+//		return nil, fmt.Errorf("加载 AWS 配置失败: %w", err)
+//	}
+//
+//	// 创建 S3 客户端
+//	return s3.NewFromConfig(cfg), nil
+//}
 
 // 场景1：上传字符串（适配你的 Base64 拼接字符串场景）
 func UploadStringToS3(s3Client *s3.Client, bucket, key, content string) error {

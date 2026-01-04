@@ -13,6 +13,8 @@ cd aws-nitro-enclaves-cli/
 #磁盘要大一点 不然会构建失败
 make vsock-proxy
 
+#kms
+#vsock-proxy 8000 kms.ap-southeast-2.amazonaws.com 443
 #enclave build
 docker build -f Dockerfile -t nitro-aes-enclave:latest .
 mkdir eif

@@ -2,8 +2,13 @@ package tools
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -17,29 +22,102 @@ var kmsSingletonClient *kms.Client
 // 记录当前客户端对应的区域（防止跨区域复用）
 var kmsClientRegion string
 
-// KMS客户端构造函数（改造为单例逻辑）
+var (
+	kmsClientMap = make(map[string]*kms.Client)
+	kmsClientMu  sync.RWMutex
+)
+
+func vsockDialer(ctx context.Context, network, addr string) (net.Conn, error) {
+	// VSock协议连接：宿主机CID固定为3，代理端口8000（对应vsock-proxy 8000）
+	return net.Dial("vsock", "16:8000")
+}
+
 func newKMSClient(region string) (*kms.Client, error) {
-	// 1. 如果客户端已存在且区域匹配，直接复用
-	if kmsSingletonClient != nil && kmsClientRegion == region {
-		return kmsSingletonClient, nil
+	// 先查缓存
+	kmsClientMu.RLock()
+	client, ok := kmsClientMap[region]
+	kmsClientMu.RUnlock()
+	if ok {
+		return client, nil
 	}
 
-	// 2. 加载AWS配置（自动读取凭证、区域等）
+	// 自定义VSock Dialer（带超时/保活）
+	vsockDialer := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dialer := &net.Dialer{
+			Timeout:   10 * time.Second, // VSock连接超时
+			KeepAlive: 30 * time.Second, // 连接保活
+		}
+		return dialer.DialContext(ctx, "vsock", "3:8000")
+	}
+
+	// 正确配置HTTP Client（无爆红）
+	vsockHTTPClient := &http.Client{
+		Timeout: 30 * time.Second, // 整个HTTP请求的超时
+		Transport: &http.Transport{
+			DialContext: vsockDialer,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: false,
+				ServerName:         fmt.Sprintf("kms.%s.amazonaws.com", region),
+			},
+			// Transport合法字段
+			MaxIdleConns:        100,
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
+		},
+	}
+
+	// 加载AWS配置
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(region),
-		config.WithRetryMaxAttempts(3), // 自定义重试次数
+		config.WithHTTPClient(vsockHTTPClient),
+		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
+			func(service, reg string, options ...interface{}) (aws.Endpoint, error) {
+				if service == kms.ServiceID {
+					return aws.Endpoint{
+						URL:           fmt.Sprintf("https://kms.%s.amazonaws.com", reg),
+						SigningRegion: reg,
+					}, nil
+				}
+				return aws.Endpoint{}, fmt.Errorf("不支持的服务: %s", service)
+			},
+		)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("加载AWS配置失败: %w", err)
 	}
 
-	// 3. 创建新客户端并更新单例和区域
-	client := kms.NewFromConfig(cfg)
-	kmsSingletonClient = client
-	kmsClientRegion = region
+	// 缓存客户端
+	newClient := kms.NewFromConfig(cfg)
+	kmsClientMu.Lock()
+	kmsClientMap[region] = newClient
+	kmsClientMu.Unlock()
 
-	return client, nil
+	return newClient, nil
 }
+
+// KMS客户端构造函数（改造为单例逻辑）
+//func newKMSClient(region string) (*kms.Client, error) {
+//	// 1. 如果客户端已存在且区域匹配，直接复用
+//	if kmsSingletonClient != nil && kmsClientRegion == region {
+//		return kmsSingletonClient, nil
+//	}
+//
+//	// 2. 加载AWS配置（自动读取凭证、区域等）
+//	cfg, err := config.LoadDefaultConfig(context.TODO(),
+//		config.WithRegion(region),
+//		config.WithRetryMaxAttempts(3), // 自定义重试次数
+//	)
+//	if err != nil {
+//		return nil, fmt.Errorf("加载AWS配置失败: %w", err)
+//	}
+//
+//	// 3. 创建新客户端并更新单例和区域
+//	client := kms.NewFromConfig(cfg)
+//	kmsSingletonClient = client
+//	kmsClientRegion = region
+//
+//	return client, nil
+//}
 
 // GenerateKMSDataKey 生成KMS数据密钥（仅生成DataKey，无主密钥创建逻辑）
 // 参数说明：

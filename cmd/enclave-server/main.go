@@ -23,8 +23,6 @@ import (
 
 var keyCache = aes.NewKeyCache()
 
-//request
-
 func main() {
 	//kms配置
 
