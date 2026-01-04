@@ -10,7 +10,8 @@ import (
 	"net"
 	"net/http"
 	"nitro_enclave/internal/req"
-	"nitro_enclave/internal/s3"
+	"strings"
+
 	"os"
 	"os/signal"
 	"strconv"
@@ -18,12 +19,9 @@ import (
 	"time" // 新增：引入时间包
 	"unicode"
 
+	"github.com/mdlayher/vsock"
 	"nitro_enclave/internal/aes"
 	"nitro_enclave/internal/resp"
-	"nitro_enclave/internal/tools"
-
-	"github.com/aws/aws-sdk-go-v2/service/kms/types"
-	"github.com/mdlayher/vsock"
 )
 
 var keyCache = aes.NewKeyCache()
@@ -108,11 +106,6 @@ func newVSOCKTransport() *http.Transport {
 func main() {
 	//kms配置
 
-	s3Bucket := "aeskeybackup"
-	awsRegion := "ap-southeast-2"                                                                  // 你的AWS区域（如us-east-1、eu-west-1）
-	kmsKeyId := "arn:aws:kms:ap-southeast-2:389405924691:key/feb73b5b-2218-45f3-8dc9-a332dea6631b" // 替换为已存在的KMS主密钥ID/ARN
-	dataKeySpec := types.DataKeySpecAes256                                                         // 数据密钥规格（AES_256/AES_128）
-
 	// 监听退出信号，输出日志（便于排查是否被强制终止）
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -128,26 +121,6 @@ func main() {
 		Transport: newVSOCKTransport(),
 		Timeout:   30 * time.Second,
 	}
-
-	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		reqBody := req.BackupRequest{
-			KeyID:  "test-key-001",
-			Aeskey: []byte("your-aes-key-here"),
-		}
-		jsonBody, _ := json.Marshal(reqBody)
-
-		resp, err := client.Post("http://8081/backupkey", "application/json", bytes.NewBuffer(jsonBody))
-
-		if err != nil {
-			log.Fatalf("请求失败: %v", err)
-		}
-		defer resp.Body.Close()
-
-		// 解析响应
-		var respBody map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&respBody)
-		log.Printf("响应状态: %d, 响应内容: %+v", resp.StatusCode, respBody)
-	})
 
 	// 增加请求方法校验，避免非法请求导致逻辑异常
 	http.HandleFunc("/aes/generate-key", func(w http.ResponseWriter, r *http.Request) {
@@ -182,25 +155,43 @@ func main() {
 			return
 		}
 
-		//kms datakey加密aes key
-
-		result, err := tools.GenerateKMSDataKey(awsRegion, kmsKeyId, dataKeySpec)
+		//获取datakey
+		var dataketResp resp.DatakeyResponse
+		kms_resp, err := client.Get("http://8081/kms/datakey")
 		if err != nil {
-			log.Fatalf("生成DataKey失败: %v", err)
+			log.Printf("Get请求失败: %v", err)
 		}
+		defer kms_resp.Body.Close()
 
-		kms_aes_key_Plaintext := result.Plaintext
+		if err := json.NewDecoder(kms_resp.Body).Decode(&dataketResp); err != nil {
+			log.Printf("解析响应JSON失败: %v", err)
+		}
+		split_key := strings.Split(dataketResp.Key, "|")
+		//kms datakey加密aes key
+		key_Plaintext, err := keyCache.Base64ToAESKey(split_key[0])
 
-		blob := keyCache.AESKeyToBase64(result.CiphertextBlob)
-		encrypt_aeskey, err := keyCache.Encrypt_backup_to_s3(kms_aes_key_Plaintext, aes_key)
+		encrypt_aeskey, err := keyCache.Encrypt_backup_to_s3(key_Plaintext, aes_key) //明文datakey加密aes key
 		base64_aes_Key := keyCache.AESKeyToBase64(encrypt_aeskey)
-		bak_key := fmt.Sprintf("%s|%s", blob, base64_aes_Key)
-		//backup s3
-		s3client, err := s3.InitS3Client(awsRegion)
 
-		s3key := keyID
+		//backup to s3
+		reqBody := req.BackupRequest{
+			KeyID:          keyID,
+			CiphertextBlob: split_key[1],
+			Encrypt_Aeskey: base64_aes_Key,
+		}
+		jsonBody, _ := json.Marshal(reqBody)
 
-		s3.UploadStringToS3(s3client, s3Bucket, s3key, bak_key)
+		s3_resp, err := client.Post("http://8081/s3/upload", "application/json", bytes.NewBuffer(jsonBody))
+
+		if err != nil {
+			log.Fatalf("请求失败: %v", err)
+		}
+		defer s3_resp.Body.Close()
+
+		// 解析响应
+		var respBody map[string]interface{}
+		json.NewDecoder(s3_resp.Body).Decode(&respBody)
+		log.Printf("响应状态: %d, 响应内容: %+v", s3_resp.StatusCode, respBody)
 
 		resp := resp.GenerateKeyResponse{
 			KeyID:  keyID,

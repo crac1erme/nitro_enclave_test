@@ -40,8 +40,43 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// 增加请求方法校验，避免非法请求导致逻辑异常
-	http.HandleFunc("/backupkey", func(w http.ResponseWriter, r *http.Request) {
+	//kms-datakey生成 enclave调用加密备份key用 保障明文密钥不出enclave
+	http.HandleFunc("/kms/datakey", func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method != http.MethodGet {
+			resp := resp.ErrorResponse{
+				Status: "error",
+				Msg:    "仅支持 Get 请求",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		//kms加密备份s3流程
+		//kms datakey加密aes key
+		//kms datakey生成
+		result, err := tools.GenerateKMSDataKey(awsRegion, kmsKeyId, dataKeySpec)
+		if err != nil {
+			log.Printf("生成DataKey失败: %v", err)
+		}
+
+		kms_aes_key_Plaintext := keyCache.AESKeyToBase64(result.Plaintext)
+		blob := keyCache.AESKeyToBase64(result.CiphertextBlob)
+
+		aes_result := fmt.Sprintf("%s|%s", kms_aes_key_Plaintext, blob)
+
+		resp := resp.DatakeyResponse{
+			Key:    aes_result,
+			Status: "success",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+
+	})
+
+	// enclave调用 加密后key备份到s3 防止丢失 keyid/
+	http.HandleFunc("/s3/upload", func(w http.ResponseWriter, r *http.Request) {
 
 		if r.Method != http.MethodPost {
 			resp := resp.BackupKeyResponse{
@@ -64,24 +99,10 @@ func main() {
 			return
 		}
 
-		//kms加密备份s3流程
-		//kms datakey加密aes key
-		//kms datakey生成
-		result, err := tools.GenerateKMSDataKey(awsRegion, kmsKeyId, dataKeySpec)
-		if err != nil {
-			log.Printf("生成DataKey失败: %v", err)
-		}
-
-		kms_aes_key_Plaintext := result.Plaintext
-
-		blob := keyCache.AESKeyToBase64(result.CiphertextBlob)
-		encrypt_aeskey, err := keyCache.Encrypt_backup_to_s3(kms_aes_key_Plaintext, request.Aeskey)
-		base64_aes_Key := keyCache.AESKeyToBase64(encrypt_aeskey)
-		bak_key := fmt.Sprintf("%s|%s", blob, base64_aes_Key)
-		//backup s3
-		s3client, err := s3.InitS3Client(awsRegion)
+		bak_key := fmt.Sprintf("%s|%s", request.Encrypt_Aeskey, request.CiphertextBlob) //aeskey|datakey
 
 		s3key := request.KeyID
+		s3client, _ := s3.InitS3Client(awsRegion)
 
 		s3.UploadStringToS3(s3client, s3Bucket, s3key, bak_key)
 

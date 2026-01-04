@@ -12,6 +12,7 @@ type DecryptRequest struct {
 }
 
 type BackupRequest struct {
-	KeyID  string `json:"key_id"`
-	Aeskey []byte `json:"aes_key"`
+	KeyID          string `json:"key_id"`          //标识
+	CiphertextBlob string `json:"ciphertext_blob"` //密文data key
+	Encrypt_Aeskey string `json:"aes_key"`         //密文 aeskey 使用datakey加密的
 }
