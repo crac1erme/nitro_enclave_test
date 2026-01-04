@@ -10,3 +10,8 @@ type DecryptRequest struct {
 	KeyID         string `json:"key_id"`         // 加密时使用的密钥ID
 	EncryptedData string `json:"encrypted_data"` // 加密后的密文
 }
+
+type BackupRequest struct {
+	KeyID  string `json:"key_id"`
+	Aeskey []byte `json:"aes_key"`
+}
