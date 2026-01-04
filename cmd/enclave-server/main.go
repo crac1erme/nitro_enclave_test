@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,19 +13,97 @@ import (
 	"nitro_enclave/internal/s3"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time" // 新增：引入时间包
+	"unicode"
 
 	"nitro_enclave/internal/aes"
 	"nitro_enclave/internal/resp"
 	"nitro_enclave/internal/tools"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/mdlayher/vsock"
 )
 
 var keyCache = aes.NewKeyCache()
 
-//request
+func parsePort(addr string) (int, error) {
+	// 去掉前缀的":"（如果有）
+	if len(addr) > 0 && addr[0] == ':' {
+		addr = addr[1:]
+	}
+
+	// 截取纯数字的端口部分（去掉路径/参数）
+	var portStr string
+	for _, c := range addr {
+		if unicode.IsDigit(c) {
+			portStr += string(c)
+		} else {
+			break // 遇到非数字字符停止（如/、?）
+		}
+	}
+
+	// 空端口校验
+	if portStr == "" {
+		return 0, fmt.Errorf("地址%s中未找到有效端口", addr)
+	}
+
+	// 字符串转数字
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return 0, fmt.Errorf("端口解析失败: %v", err)
+	}
+
+	// 端口范围校验（1-65535）
+	if port <= 0 || port > 65535 {
+		return 0, fmt.Errorf("端口%d超出有效范围（1-65535）", port)
+	}
+
+	return port, nil
+}
+
+// vsock client
+func newVSOCKTransport() *http.Transport {
+	return &http.Transport{
+		// DialContext 是http.Transport的要求，内部封装vsock.Dial
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// 1. 解析端口（处理addr格式："8081" 或 "8081/backupkey"）
+			portStr := addr
+			// 截取纯端口部分（去掉路径/参数）
+			for i := 0; i < len(addr); i++ {
+				if addr[i] == '/' || addr[i] == '?' {
+					portStr = addr[:i]
+					break
+				}
+			}
+
+			// 2. 解析端口为数字
+			port, err := parsePort(portStr)
+			if err != nil {
+				log.Printf("解析VSOCK端口失败（addr=%s）: %v", addr, err)
+				return nil, err
+			}
+
+			// 3. 旧版API：仅用vsock.Dial（无Context）
+			// Enclave连接宿主机固定CID=3
+			conn, err := vsock.Dial(3, uint32(port), nil)
+			if err != nil {
+				log.Printf("VSOCK连接失败（CID=3, Port=%d）: %v", port, err)
+				return nil, err
+			}
+
+			// 4. 兼容Context超时（手动监听ctx.Done）
+			go func() {
+				<-ctx.Done()
+				_ = conn.Close() // 超时/取消时关闭连接
+			}()
+
+			log.Printf("VSOCK连接成功：CID=3, Port=%d", port)
+			return conn, nil
+		},
+	}
+}
 
 func main() {
 	//kms配置
@@ -41,6 +121,33 @@ func main() {
 		log.Printf("收到退出信号: %v，程序退出", sig)
 		os.Exit(0)
 	}()
+
+	//vsock请求客户端初始化
+
+	client := &http.Client{
+		Transport: newVSOCKTransport(),
+		Timeout:   30 * time.Second,
+	}
+
+	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+		reqBody := req.BackupRequest{
+			KeyID:  "test-key-001",
+			Aeskey: []byte("your-aes-key-here"),
+		}
+		jsonBody, _ := json.Marshal(reqBody)
+
+		resp, err := client.Post("http://8081/backupkey", "application/json", bytes.NewBuffer(jsonBody))
+
+		if err != nil {
+			log.Fatalf("请求失败: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// 解析响应
+		var respBody map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&respBody)
+		log.Printf("响应状态: %d, 响应内容: %+v", resp.StatusCode, respBody)
+	})
 
 	// 增加请求方法校验，避免非法请求导致逻辑异常
 	http.HandleFunc("/aes/generate-key", func(w http.ResponseWriter, r *http.Request) {

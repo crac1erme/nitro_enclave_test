@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"nitro_enclave/internal/aes"
 	"nitro_enclave/internal/req"
@@ -17,6 +16,7 @@ import (
 	"syscall"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/mdlayher/vsock"
 )
 
 var keyCache = aes.NewKeyCache()
@@ -69,7 +69,7 @@ func main() {
 		//kms datakey生成
 		result, err := tools.GenerateKMSDataKey(awsRegion, kmsKeyId, dataKeySpec)
 		if err != nil {
-			log.Fatalf("生成DataKey失败: %v", err)
+			log.Printf("生成DataKey失败: %v", err)
 		}
 
 		kms_aes_key_Plaintext := result.Plaintext
@@ -94,16 +94,19 @@ func main() {
 
 	})
 
-	// 核心修改：监听 TCP 8080 端口（纯 HTTP，移除所有 VSOCK 逻辑）
-	lis, err := net.Listen("tcp", ":8081")
+	listenCID, _ := vsock.ContextID()
+	listenPort := uint32(8081)
+
+	listener, err := vsock.ListenContextID(listenCID, listenPort, nil)
+
 	if err != nil {
 		log.Fatalf("监听 HTTP 端口失败: %v\n排查提示：1. 端口 8081 是否被占用 2. 是否有端口监听权限", err)
 	}
-	defer lis.Close() // 确保退出时关闭监听
+	defer listener.Close() // 确保退出时关闭监听
 
 	log.Println("host proxy 服务启动，监听 HTTP :8081")
 	// 原有阻塞逻辑保留（核心）
-	if err := http.Serve(lis, nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := http.Serve(listener, nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("HTTP 服务异常退出: %v", err)
 	}
 }
