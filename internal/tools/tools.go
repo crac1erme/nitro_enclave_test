@@ -29,7 +29,7 @@ var (
 
 func vsockDialer(ctx context.Context, network, addr string) (net.Conn, error) {
 	// VSock协议连接：宿主机CID固定为3，代理端口8000（对应vsock-proxy 8000）
-	return net.Dial("vsock", "16:8000")
+	return net.Dial("vsock", "3:8000")
 }
 
 func newKMSClient(region string) (*kms.Client, error) {

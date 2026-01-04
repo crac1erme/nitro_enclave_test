@@ -26,7 +26,7 @@ func vsockDialer() func(ctx context.Context, network, addr string) (net.Conn, er
 			KeepAlive: 30 * time.Second, // TCP保活（VSock复用该逻辑）
 		}
 		// 宿主机VSock CID固定为3，端口为预定义的S3代理端口
-		return dialer.DialContext(ctx, "vsock", "16:8001")
+		return dialer.DialContext(ctx, "vsock", "3:8001")
 	}
 }
 

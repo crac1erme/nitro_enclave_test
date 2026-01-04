@@ -13,8 +13,12 @@ cd aws-nitro-enclaves-cli/
 #磁盘要大一点 不然会构建失败
 make vsock-proxy
 
+#追加vsock允许访问的s3地址 （kms已经自带了）不然proxy代理不成功
+echo '- {address: s3.ap-southeast-2.amazonaws.com, port: 443}' >> /etc/nitro_enclaves/vsock-proxy.yaml
 #kms
 #vsock-proxy 8000 kms.ap-southeast-2.amazonaws.com 443
+#s3
+#vsock-proxy 8001 s3.ap-southeast-2.amazonaws.com 443
 #enclave build
 docker build -f Dockerfile -t nitro-aes-enclave:latest .
 mkdir eif
