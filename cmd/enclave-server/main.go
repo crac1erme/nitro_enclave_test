@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -153,6 +154,8 @@ func main() {
 			log.Fatalf("请求失败: %v", err)
 		}
 
+		body, err := io.ReadAll(kms_decrypt.Body)
+		log.Printf("KMS /decrypt 响应体: %s", string(body))
 		resp := resp.GenerateKeyResponse{
 			KeyID:  "keyID",
 			Status: "success",
