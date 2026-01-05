@@ -151,7 +151,7 @@ func main() {
 		reqBody, _ := json.Marshal(decryptReq)
 
 		kms_decrypt, err := client.Post("http://8081/kms/decrypt", "application/json", bytes.NewBuffer(reqBody))
-		log.Printf("%s", kms_decrypt)
+		//log.Printf("%s", kms_decrypt)
 		if err != nil {
 			log.Fatalf("请求失败: %v", err)
 		}
@@ -162,11 +162,14 @@ func main() {
 			log.Printf("解析响应JSON失败: %v", err)
 		}
 
-		log.Printf("KMS /decrypt 响应体: %s", DecryptResp)
+		//log.Printf("KMS /decrypt 响应体: %s", DecryptResp)
 
 		b64_decode_key, _ := keyCache.Base64ToAESKey(DecryptResp.DecryptedData)
 
 		key, err := attestation.DecryptKMSEnvelopedKey(b64_decode_key)
+		if err != nil {
+			log.Printf("DecryptKMSEnvelopedKey error: %v", err)
+		}
 
 		log.Printf("attestation dec %s", key)
 
