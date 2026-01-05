@@ -179,6 +179,7 @@ func main() {
 		dec_key, err := keyCache.Decrypt_backup_from_s3(key, tmp_test_data)
 
 		log.Printf("解密aeskey %d", len(dec_key))
+		log.Printf("解密aeskey %s", keyCache.AESKeyToBase64(dec_key))
 
 		resp := resp.GenerateKeyResponse{
 			KeyID:  "keyID",
@@ -208,6 +209,8 @@ func main() {
 		}
 
 		keyID, aes_key := keyCache.GenerateKey()
+
+		log.Printf("generate aes key 比对:%s|%s", keyID, keyCache.AESKeyToBase64(aes_key))
 
 		if keyID == "" { // 容错密钥生成失败
 			resp := resp.GenerateKeyResponse{
