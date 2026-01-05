@@ -167,6 +167,8 @@ func main() {
 
 		key, err := attestation.DecryptKMSEnvelopedKey(b64_decode_key)
 
+		log.Printf("attestation dec %s", key)
+
 		tmp_test_data, _ := keyCache.Base64ToAESKey("+kvisgazr80iwDfd8E1fjEox3eSYfR/cdifAfVDeJo4AI7u+SbIvqeYwL8P+9ofi")
 
 		if err != nil {
