@@ -90,8 +90,8 @@ func main() {
 		log.Printf("decrypted data key: %v", key)
 
 		resp := resp.DecryptResponse{
+			DecryptedData: keyCache.AESKeyToBase64(key),
 			Status:        "success",
-			DecryptedData: "ok",
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)

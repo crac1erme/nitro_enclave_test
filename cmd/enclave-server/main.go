@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -124,12 +123,13 @@ func main() {
 		Transport: newVSOCKTransport(),
 		Timeout:   30 * time.Second,
 	}
+	//远程证明初始化
+	attDoc, err := attestation.MakeAttestation()
+	if err != nil {
+		log.Println("远程证明初始化失败")
+	}
 
 	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		attDoc, err := attestation.MakeAttestation()
-		if err != nil {
-			log.Println(err)
-		}
 
 		log.Printf("远程证明文档二进制长度: %d", len(attDoc))
 
@@ -153,9 +153,20 @@ func main() {
 		if err != nil {
 			log.Fatalf("请求失败: %v", err)
 		}
+		defer kms_decrypt.Body.Close()
 
-		body, err := io.ReadAll(kms_decrypt.Body)
-		log.Printf("KMS /decrypt 响应体: %s", string(body))
+		var DecryptResp resp.DecryptResponse
+		if err := json.NewDecoder(kms_decrypt.Body).Decode(&DecryptResp); err != nil {
+			log.Printf("解析响应JSON失败: %v", err)
+		}
+
+		log.Printf("KMS /decrypt 响应体: %s", DecryptResp)
+
+		b64_decode_key, _ := keyCache.Base64ToAESKey(DecryptResp.DecryptedData)
+
+		key, err := attestation.DecryptKMSEnvelopedKey(b64_decode_key)
+		log.Printf("KEY: %s", key)
+
 		resp := resp.GenerateKeyResponse{
 			KeyID:  "keyID",
 			Status: "success",
