@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -130,6 +131,27 @@ func main() {
 		}
 
 		log.Printf("远程证明文档二进制长度: %d", len(attDoc))
+
+		var ciphertextBlob []byte
+		ciphertextBlob, _ = keyCache.Base64ToAESKey("AQIDAHg/dHsOW8K7PL0NkGfNWuQ3rRoU7VRcu8chRtiHTNjsBQH8Trt//VK5iDRNH0ZpklyYAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQM1CpJ8W4o2EBVIPlSAgEQgDvJI28DerAnrtNsQ3B4xABhAvofAU3tXpGcF67AWxQGNphqtuD9j8yztMnPm0HoPpMh17w72CTgUgWGzQ==")
+
+		if len(ciphertextBlob) == 0 {
+			log.Println("错误: ciphertextBlob 为空，请提供有效的 KMS 加密数据")
+			http.Error(w, "Missing encrypted data", http.StatusBadRequest)
+			return
+		}
+
+		decryptReq := req.KMSDecryptRequest{
+			CiphertextBlob: base64.StdEncoding.EncodeToString(ciphertextBlob),
+			AttestationDoc: base64.StdEncoding.EncodeToString(attDoc),
+		}
+		reqBody, _ := json.Marshal(decryptReq)
+
+		kms_decrypt, err := client.Post("http://8081/kms/decrypt", "application/json", bytes.NewBuffer(reqBody))
+		log.Printf("%s", kms_decrypt)
+		if err != nil {
+			log.Fatalf("请求失败: %v", err)
+		}
 
 		resp := resp.GenerateKeyResponse{
 			KeyID:  "keyID",

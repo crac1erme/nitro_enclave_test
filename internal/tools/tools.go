@@ -92,6 +92,30 @@ func GenerateKMSDataKey(region string, keyId string, keySpec types.DataKeySpec) 
 	return result, nil
 }
 
+func DecryptDataKey(region string, CiphertextBlob []byte, Attestation []byte) ([]byte, error) {
+	client, err := newKMSClient(region)
+	if err != nil {
+		return nil, fmt.Errorf("创建KMS客户端失败: %w", err)
+	}
+
+	input := &kms.DecryptInput{
+		CiphertextBlob: CiphertextBlob,
+		Recipient: &types.RecipientInfo{
+			AttestationDocument:    Attestation,
+			KeyEncryptionAlgorithm: "RSAES_OAEP_SHA_256",
+		},
+	}
+
+	resp, err := client.Decrypt(context.TODO(), input)
+	if err != nil {
+		return nil, err
+
+	}
+
+	return resp.CiphertextForRecipient, nil
+
+}
+
 // 可选：重置单例（测试/切换区域时使用）
 func ResetKMSClientSingleton() {
 	kmsSingletonClient = nil

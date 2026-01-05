@@ -40,6 +40,63 @@ func main() {
 		os.Exit(0)
 	}()
 
+	http.HandleFunc("/kms/decrypt", func(w http.ResponseWriter, r *http.Request) {
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method != http.MethodPost {
+			json.NewEncoder(w).Encode(resp.KMSDecryptResponse{
+				Status: "error",
+				Msg:    "仅支持 POST 请求",
+			})
+			return
+		}
+
+		var decryptReq req.KMSDecryptRequest
+		if err := json.NewDecoder(r.Body).Decode(&decryptReq); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp.KMSDecryptResponse{
+				Status: "error",
+				Msg:    "解析请求失败: " + err.Error(),
+			})
+			return
+		}
+
+		// 校验必填参数
+		if decryptReq.CiphertextBlob == "" || decryptReq.AttestationDoc == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp.KMSDecryptResponse{
+				Status: "error",
+				Msg:    "ciphertext_blob 和 attestation_doc 为必填参数",
+			})
+			return
+		}
+
+		ciphertextBlob, err := keyCache.Base64ToAESKey(decryptReq.CiphertextBlob)
+		if err != nil {
+			log.Printf("密文Base64解码失败: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp.KMSDecryptResponse{
+				Status: "error",
+				Msg:    "密文Base64解码失败: " + err.Error(),
+			})
+			return
+		}
+
+		AttestationDoc, err := keyCache.Base64ToAESKey(decryptReq.AttestationDoc)
+
+		key, err := tools.DecryptDataKey(awsRegion, ciphertextBlob, AttestationDoc)
+
+		log.Printf("decrypted data key: %v", key)
+
+		resp := resp.DecryptResponse{
+			Status:        "success",
+			DecryptedData: "ok",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+
 	//kms-datakey生成 enclave调用加密备份key用 保障明文密钥不出enclave
 	http.HandleFunc("/kms/datakey", func(w http.ResponseWriter, r *http.Request) {
 

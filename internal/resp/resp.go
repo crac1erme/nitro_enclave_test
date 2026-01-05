@@ -1,9 +1,9 @@
 package resp
 
 type KMSDecryptResponse struct {
-	Success   bool   `json:"success"`
-	Plaintext string `json:"plaintext"` // DataKey明文（Base64）
-	ErrorMsg  string `json:"error_msg"`
+	Status    string `json:"status"`
+	Plaintext string `json:"plaintext,omitempty"` // Base64 编码的明文
+	Msg       string `json:"msg,omitempty"`
 }
 
 type S3KeyItem struct {
