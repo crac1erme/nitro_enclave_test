@@ -124,13 +124,14 @@ func main() {
 		Transport: newVSOCKTransport(),
 		Timeout:   30 * time.Second,
 	}
-	//远程证明初始化
-	attDoc, err := attestation.MakeAttestation()
-	if err != nil {
-		log.Println("远程证明初始化失败")
-	}
 
 	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+
+		//远程证明初始化
+		attDoc, err := attestation.MakeAttestation()
+		if err != nil {
+			log.Println("远程证明初始化失败")
+		}
 
 		log.Printf("远程证明文档二进制: %s", string(attDoc))
 
