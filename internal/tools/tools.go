@@ -112,7 +112,9 @@ func DecryptDataKey(region string, CiphertextBlob []byte, Attestation []byte) ([
 		return nil, err
 
 	}
-	log.Printf("kms decrypt result: %v", resp)
+	log.Printf("kms decrypt Plaintext: %v", resp.Plaintext)
+	log.Printf("kms decrypt ResultMetadata: %v", resp.ResultMetadata)
+	log.Printf("kms decrypt CiphertextForRecipient: %v", resp.CiphertextForRecipient)
 
 	return resp.CiphertextForRecipient, nil
 
