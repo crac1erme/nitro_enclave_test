@@ -85,12 +85,23 @@ func main() {
 
 		AttestationDoc, err := keyCache.Base64ToAESKey(decryptReq.AttestationDoc)
 
-		key, err := tools.DecryptDataKey(awsRegion, ciphertextBlob, AttestationDoc)
+		//key, err := tools.DecryptDataKey(awsRegion, ciphertextBlob, AttestationDoc)
 
-		log.Printf("decrypted data key: %v", key)
+		ciphertextForRecipient, err := tools.DecryptDataKey(awsRegion, ciphertextBlob, AttestationDoc)
+		if err != nil {
+			log.Printf("KMS解密失败: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(resp.KMSDecryptResponse{
+				Status: "error",
+				Msg:    "KMS解密失败: " + err.Error(),
+			})
+			return
+		}
+
+		log.Printf("decrypted data key: %v", ciphertextForRecipient)
 
 		resp := resp.DecryptResponse{
-			DecryptedData: keyCache.AESKeyToBase64(key),
+			DecryptedData: keyCache.AESKeyToBase64(ciphertextForRecipient),
 			Status:        "success",
 		}
 		w.Header().Set("Content-Type", "application/json")

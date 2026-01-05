@@ -171,13 +171,10 @@ func main() {
 			log.Printf("DecryptKMSEnvelopedKey error: %v", err)
 		}
 
-		log.Printf("attestation dec %s", key)
+		log.Printf("✅ 解密成功！明文密钥长度: %d", len(b64_decode_key))
+		//log.Printf("attestation dec %s", key)
 
 		tmp_test_data, _ := keyCache.Base64ToAESKey("+kvisgazr80iwDfd8E1fjEox3eSYfR/cdifAfVDeJo4AI7u+SbIvqeYwL8P+9ofi")
-
-		if err != nil {
-			log.Printf("%s", err.Error())
-		}
 
 		dec_key, err := keyCache.Decrypt_backup_from_s3(key, tmp_test_data)
 
