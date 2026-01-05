@@ -136,7 +136,7 @@ func main() {
 		log.Printf("远程证明文档二进制: %s", len(attDoc))
 
 		var ciphertextBlob []byte
-		ciphertextBlob, _ = keyCache.Base64ToAESKey("AQIDAHg/dHsOW8K7PL0NkGfNWuQ3rRoU7VRcu8chRtiHTNjsBQH8Trt//VK5iDRNH0ZpklyYAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQM1CpJ8W4o2EBVIPlSAgEQgDvJI28DerAnrtNsQ3B4xABhAvofAU3tXpGcF67AWxQGNphqtuD9j8yztMnPm0HoPpMh17w72CTgUgWGzQ==")
+		ciphertextBlob, _ = keyCache.Base64ToAESKey("AQIDAHg/dHsOW8K7PL0NkGfNWuQ3rRoU7VRcu8chRtiHTNjsBQF8UdmFbpAnhDe8AKS8oY+aAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMNQIKgGxtbLREBpTeAgEQgDuBw3hcFxAzd5w/DetvKaCYQYLgaEkB7jX/LMmu3NSGiIcqsGpzfgjikxFXNGjIGhgkxJKkhRgeC7XP3Q==")
 
 		if len(ciphertextBlob) == 0 {
 			log.Println("错误: ciphertextBlob 为空，请提供有效的 KMS 加密数据")
@@ -174,7 +174,7 @@ func main() {
 		log.Printf("✅ 解密成功！明文密钥长度: %d", len(b64_decode_key))
 		//log.Printf("attestation dec %s", key)
 
-		tmp_test_data, _ := keyCache.Base64ToAESKey("+kvisgazr80iwDfd8E1fjEox3eSYfR/cdifAfVDeJo4AI7u+SbIvqeYwL8P+9ofi")
+		tmp_test_data, _ := keyCache.Base64ToAESKey("+nc8/FFBJIGcsN6xFwVlx0e9tdwAmV+q4mSN96k2k5G1of8EzwUnxMwH91npQ60I")
 
 		dec_key, err := keyCache.Decrypt_backup_from_s3(key, tmp_test_data)
 
