@@ -1,5 +1,23 @@
 package resp
 
+type KMSDecryptResponse struct {
+	Success   bool   `json:"success"`
+	Plaintext string `json:"plaintext"` // DataKey明文（Base64）
+	ErrorMsg  string `json:"error_msg"`
+}
+
+type S3KeyItem struct {
+	KeyID          string `json:"key_id"`
+	EncryptAesKey  string `json:"encrypt_aeskey"`  // 加密的AES密钥（Base64）
+	CiphertextBlob string `json:"ciphertext_blob"` // DataKey密文（Base64）
+}
+
+type S3PullAllResponse struct {
+	Success  bool        `json:"success"`
+	Data     []S3KeyItem `json:"data"`
+	ErrorMsg string      `json:"error_msg"`
+}
+
 type GenerateKeyResponse struct {
 	KeyID  string `json:"key_id"`
 	Status string `json:"status"`

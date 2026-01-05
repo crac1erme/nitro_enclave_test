@@ -16,3 +16,15 @@ type BackupRequest struct {
 	CiphertextBlob string `json:"ciphertext_blob"` //密文data key
 	Encrypt_Aeskey string `json:"aes_key"`         //密文 aeskey 使用datakey加密的
 }
+
+// KMSDecryptRequest KMS解密请求（Enclave → 宿主机）
+type KMSDecryptRequest struct {
+	CiphertextBlob      string `json:"ciphertext_blob"` // DataKey密文（Base64）
+	AttestationDocument string `json:"attestation_doc"` // 远程证明文档（Base64）
+	PCR0                string `json:"pcr0"`            // 可信PCR0哈希
+}
+
+type S3PullAllRequest struct {
+	Bucket string `json:"bucket"` // S3桶名
+	Prefix string `json:"prefix"` // 密钥前缀（如aes-key-）
+}

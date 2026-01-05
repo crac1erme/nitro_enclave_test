@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"nitro_enclave/internal/attestation"
 	"nitro_enclave/internal/req"
 	"strings"
 
@@ -121,6 +122,28 @@ func main() {
 		Transport: newVSOCKTransport(),
 		Timeout:   30 * time.Second,
 	}
+
+	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+		attDocB64, err := attestation.GenerateAttestationDocument("ap-southeast-2")
+		if err != nil {
+			log.Println(err)
+		}
+
+		attDoc, err := attestation.Base64Decode(attDocB64)
+		if err != nil {
+			log.Printf("解码证明文档失败: %v", err)
+		}
+
+		log.Printf("远程证明文档二进制长度: %d", len(attDoc))
+
+		resp := resp.GenerateKeyResponse{
+			KeyID:  "keyID",
+			Status: "success",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+
+	})
 
 	// 增加请求方法校验，避免非法请求导致逻辑异常
 	http.HandleFunc("/aes/generate-key", func(w http.ResponseWriter, r *http.Request) {
