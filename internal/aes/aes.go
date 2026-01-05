@@ -93,16 +93,31 @@ func (c *KeyCache) Encrypt_backup_to_s3(aes_key []byte, plaintext []byte) ([]byt
 	ciphertext := gcm.Seal(nil, nonce, plaintextBytes, nil)
 
 	return ciphertext, nil
-	//tag := ciphertext[len(ciphertext)-gcm.Overhead():]
-	//ciphertext = ciphertext[:len(ciphertext)-gcm.Overhead()]
-	//
-	//ciphertextHex := hex.EncodeToString(ciphertext)
-	//nonceHex := hex.EncodeToString(nonce)
-	//tagHex := hex.EncodeToString(tag)
-	//
-	//fullEncryptedStr := fmt.Sprintf("%s$%s$%s", ciphertextHex, nonceHex, tagHex)
-	//
-	//return fullEncryptedStr, nil
+}
+
+func (c *KeyCache) Decrypt_backup_from_s3(aes_key []byte, ciphertext []byte) ([]byte, error) {
+	// 1. 创建 AES cipher
+	block, err := aes.NewCipher(aes_key)
+	if err != nil {
+		return nil, fmt.Errorf("创建 AES cipher 失败: %w", err)
+	}
+
+	// 2. 创建 GCM 模式
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("创建 GCM 失败: %w", err)
+	}
+
+	// 3. 使用与加密时完全相同的 nonce
+	nonce := []byte("123456789012") // 必须一致！
+
+	// 4. 解密（ciphertext 包含 auth tag）
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("AES-GCM 解密失败: %w", err)
+	}
+
+	return plaintext, nil
 }
 
 func (c *KeyCache) Decrypt(keyID, fullEncryptedStr string) (string, error) {

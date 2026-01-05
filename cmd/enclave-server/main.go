@@ -21,9 +21,10 @@ import (
 	"time" // 新增：引入时间包
 	"unicode"
 
-	"github.com/mdlayher/vsock"
 	"nitro_enclave/internal/aes"
 	"nitro_enclave/internal/resp"
+
+	"github.com/mdlayher/vsock"
 )
 
 var keyCache = aes.NewKeyCache()
@@ -165,7 +166,16 @@ func main() {
 		b64_decode_key, _ := keyCache.Base64ToAESKey(DecryptResp.DecryptedData)
 
 		key, err := attestation.DecryptKMSEnvelopedKey(b64_decode_key)
-		log.Printf("KEY: %s", key)
+
+		tmp_test_data, _ := keyCache.Base64ToAESKey("+kvisgazr80iwDfd8E1fjEox3eSYfR/cdifAfVDeJo4AI7u+SbIvqeYwL8P+9ofi")
+
+		if err != nil {
+			log.Printf("%s", err.Error())
+		}
+
+		dec_key, err := keyCache.Decrypt_backup_from_s3(key, tmp_test_data)
+
+		log.Printf("%s", dec_key)
 
 		resp := resp.GenerateKeyResponse{
 			KeyID:  "keyID",
