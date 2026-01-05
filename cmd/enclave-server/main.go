@@ -124,14 +124,9 @@ func main() {
 	}
 
 	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		attDocB64, err := attestation.GenerateAttestationDocument("ap-southeast-2")
+		attDoc, err := attestation.MakeAttestation()
 		if err != nil {
 			log.Println(err)
-		}
-
-		attDoc, err := attestation.Base64Decode(attDocB64)
-		if err != nil {
-			log.Printf("解码证明文档失败: %v", err)
 		}
 
 		log.Printf("远程证明文档二进制长度: %d", len(attDoc))
