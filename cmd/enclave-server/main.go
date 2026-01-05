@@ -178,7 +178,7 @@ func main() {
 
 		dec_key, err := keyCache.Decrypt_backup_from_s3(key, tmp_test_data)
 
-		log.Printf("%s", dec_key)
+		log.Printf("解密aeskey %d", len(dec_key))
 
 		resp := resp.GenerateKeyResponse{
 			KeyID:  "keyID",
