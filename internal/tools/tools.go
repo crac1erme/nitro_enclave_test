@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -111,6 +112,7 @@ func DecryptDataKey(region string, CiphertextBlob []byte, Attestation []byte) ([
 		return nil, err
 
 	}
+	log.Printf("kms decrypt result: %v", resp)
 
 	return resp.CiphertextForRecipient, nil
 
