@@ -133,7 +133,7 @@ func main() {
 			log.Println("远程证明初始化失败")
 		}
 
-		log.Printf("远程证明文档二进制: %s", string(attDoc))
+		log.Printf("远程证明文档二进制: %s", len(attDoc))
 
 		var ciphertextBlob []byte
 		ciphertextBlob, _ = keyCache.Base64ToAESKey("AQIDAHg/dHsOW8K7PL0NkGfNWuQ3rRoU7VRcu8chRtiHTNjsBQH8Trt//VK5iDRNH0ZpklyYAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQM1CpJ8W4o2EBVIPlSAgEQgDvJI28DerAnrtNsQ3B4xABhAvofAU3tXpGcF67AWxQGNphqtuD9j8yztMnPm0HoPpMh17w72CTgUgWGzQ==")
