@@ -192,6 +192,9 @@ func main() {
 			return
 		}
 
+		log.Printf("s3 full fetch result: %v", fetchResult.Data)
+		log.Printf("s3 full fetch total: %v", fetchResult.Total)
+
 		resp := resp.S3FullFetchResponse{
 			Status:  "success",
 			Data:    fetchResult.Data,
