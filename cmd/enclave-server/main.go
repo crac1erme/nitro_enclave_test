@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -131,14 +132,16 @@ func main() {
 
 		reqBody, _ := json.Marshal(reqbody)
 
-		s3_pull_all, err := client.Post("http://8081//s3/full-fetch", "application/json", bytes.NewBuffer(reqBody))
+		s3_pull_all, err := client.Post("http://8081/s3/full-fetch", "application/json", bytes.NewBuffer(reqBody))
 		//log.Printf("%s", kms_decrypt)
 		if err != nil {
 			log.Fatalf("请求失败: %v", err)
 		}
 		defer s3_pull_all.Body.Close()
 
-		log.Printf("s3全量数据 %v", s3_pull_all.Body)
+		bodyBytes, err := io.ReadAll(s3_pull_all.Body)
+
+		log.Printf("s3全量数据 %s", string(bodyBytes))
 
 		resp := resp.GenerateKeyResponse{
 			KeyID:  "keyID",
