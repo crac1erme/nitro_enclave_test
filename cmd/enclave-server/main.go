@@ -125,6 +125,30 @@ func main() {
 		Timeout:   30 * time.Second,
 	}
 
+	http.HandleFunc("/test2", func(w http.ResponseWriter, r *http.Request) {
+
+		reqbody := req.S3FullFetchRequest{}
+
+		reqBody, _ := json.Marshal(reqbody)
+
+		s3_pull_all, err := client.Post("http://8081//s3/full-fetch", "application/json", bytes.NewBuffer(reqBody))
+		//log.Printf("%s", kms_decrypt)
+		if err != nil {
+			log.Fatalf("请求失败: %v", err)
+		}
+		defer s3_pull_all.Body.Close()
+
+		log.Printf("s3全量数据 %v", s3_pull_all.Body)
+
+		resp := resp.GenerateKeyResponse{
+			KeyID:  "keyID",
+			Status: "success",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+
+	})
+
 	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
 
 		//远程证明初始化
