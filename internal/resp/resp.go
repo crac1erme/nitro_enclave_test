@@ -1,5 +1,13 @@
 package resp
 
+type S3FullFetchResponse struct {
+	Status  string            `json:"status"`
+	Data    map[string]string `json:"data"`    // KeyID -> aeskey|datakey（和上传格式一致）
+	Failed  []string          `json:"failed"`  // 拉取失败的KeyID列表
+	Total   int               `json:"total"`   // 总拉取数量
+	Success int               `json:"success"` // 成功数量
+	Msg     string            `json:"msg,omitempty"`
+}
 type KMSDecryptResponse struct {
 	Status    string `json:"status"`
 	Plaintext string `json:"plaintext,omitempty"` // Base64 编码的明文

@@ -26,3 +26,7 @@ type S3PullAllRequest struct {
 	Bucket string `json:"bucket"` // S3桶名
 	Prefix string `json:"prefix"` // 密钥前缀（如aes-key-）
 }
+
+type S3FullFetchRequest struct {
+	Prefix string `json:"prefix,omitempty"` // 可选：拉取指定前缀的密钥，空则全量
+}

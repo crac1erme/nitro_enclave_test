@@ -13,6 +13,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
+type FullFetchResult struct {
+	Data    map[string]string // KeyID -> 内容（aeskey|datakey格式）
+	Failed  []string          // 拉取失败的KeyID列表
+	Total   int               // 总对象数量
+	Success int               // 成功拉取数量
+}
+
 // 初始化 S3 客户端（单例复用，减少资源占用）
 func InitS3Client(region string) (*s3.Client, error) {
 	// 加载 AWS 配置（自动读取凭证、区域）
@@ -164,4 +171,82 @@ func UploadLargeFileToS3(s3Client *s3.Client, bucket, key, localFilePath string)
 
 	fmt.Printf("✅ 大文件已分块上传至 s3://%s/%s\n", bucket, key)
 	return nil
+}
+
+// pull all
+func FullFetchFromS3(s3Client *s3.Client, bucket, prefix string) (*FullFetchResult, error) {
+	result := &FullFetchResult{
+		Data:    make(map[string]string),
+		Failed:  []string{},
+		Total:   0,
+		Success: 0,
+	}
+
+	var continuationToken *string // 分页标记
+
+	// 循环分页拉取（处理超过1000个对象的场景）
+	for {
+		// 构造ListObjectsV2请求
+		listInput := &s3.ListObjectsV2Input{
+			Bucket:            aws.String(bucket),
+			Prefix:            aws.String(prefix),
+			ContinuationToken: continuationToken,
+			MaxKeys:           aws.Int32(1000), // 每页最多1000个
+		}
+
+		// 调用S3列出对象
+		listResult, err := s3Client.ListObjectsV2(context.TODO(), listInput)
+		if err != nil {
+			return result, fmt.Errorf("列出S3对象失败: %w", err)
+		}
+
+		// 遍历当前页的对象，逐个下载
+		for _, obj := range listResult.Contents {
+			keyID := aws.ToString(obj.Key)
+			result.Total++
+
+			// 跳过目录（S3中目录以/结尾）
+			if strings.HasSuffix(keyID, "/") {
+				continue
+			}
+
+			// 下载单个对象内容
+			getInput := &s3.GetObjectInput{
+				Bucket: aws.String(bucket),
+				Key:    aws.String(keyID),
+			}
+			getResult, err := s3Client.GetObject(context.TODO(), getInput)
+			if err != nil {
+				fmt.Printf("❌ 下载S3对象 %s 失败: %v\n", keyID, err)
+				result.Failed = append(result.Failed, keyID)
+				continue
+			}
+
+			// 读取对象内容
+			contentBytes, err := io.ReadAll(getResult.Body)
+			getResult.Body.Close() // 必须关闭Body，避免连接泄漏
+			if err != nil {
+				fmt.Printf("❌ 读取S3对象 %s 内容失败: %v\n", keyID, err)
+				result.Failed = append(result.Failed, keyID)
+				continue
+			}
+
+			// 存储到结果中
+			result.Data[keyID] = string(contentBytes)
+			result.Success++
+		}
+
+		isTruncated := false
+		if listResult.IsTruncated != nil {
+			isTruncated = *listResult.IsTruncated
+		}
+		if !isTruncated {
+			break // 所有对象遍历完成
+		}
+
+		continuationToken = listResult.NextContinuationToken
+	}
+
+	fmt.Printf("✅ S3全量拉取完成：总计%d个，成功%d个，失败%d个\n", result.Total, result.Success, len(result.Failed))
+	return result, nil
 }

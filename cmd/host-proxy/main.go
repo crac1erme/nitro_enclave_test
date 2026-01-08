@@ -143,6 +143,67 @@ func main() {
 
 	})
 
+	//全量拉取s3
+	http.HandleFunc("/s3/full-fetch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			resp := resp.S3FullFetchResponse{
+				Status: "error",
+				Msg:    "仅支持 POST 请求",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		var request req.S3FullFetchRequest
+		dec := json.NewDecoder(r.Body)
+		if err := dec.Decode(&request); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp.S3FullFetchResponse{
+				Status: "error",
+				Msg:    "JSON 绑定失败: " + err.Error(),
+			})
+			return
+		}
+
+		s3client, err := s3.InitS3Client(awsRegion)
+		if err != nil {
+			log.Printf("初始化S3客户端失败: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(resp.S3FullFetchResponse{
+				Status: "error",
+				Msg:    "初始化S3客户端失败: " + err.Error(),
+			})
+			return
+		}
+
+		fetchResult, err := s3.FullFetchFromS3(s3client, s3Bucket, request.Prefix)
+
+		if err != nil {
+			log.Printf("全量拉取S3数据失败: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(resp.S3FullFetchResponse{
+				Status:  "error",
+				Msg:     "全量拉取S3数据失败: " + err.Error(),
+				Failed:  fetchResult.Failed,
+				Total:   fetchResult.Total,
+				Success: fetchResult.Success,
+			})
+			return
+		}
+
+		resp := resp.S3FullFetchResponse{
+			Status:  "success",
+			Data:    fetchResult.Data,
+			Failed:  fetchResult.Failed,
+			Total:   fetchResult.Total,
+			Success: fetchResult.Success,
+			Msg:     fmt.Sprintf("全量拉取完成：总计%d个，成功%d个，失败%d个", fetchResult.Total, fetchResult.Success, len(fetchResult.Failed)),
+		}
+		json.NewEncoder(w).Encode(resp)
+
+	})
+
 	// enclave调用 加密后key备份到s3 防止丢失 keyid/
 	http.HandleFunc("/s3/upload", func(w http.ResponseWriter, r *http.Request) {
 
